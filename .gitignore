@@ -1,0 +1,35 @@
+# Local build outputs
+build/
+install/
+log/
+
+# Codex/local backups
+.codex_backups/
+
+# Python caches
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+
+# Local environments and secrets
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Generated documentation
+docs/**/_build/
+
+# Original local archive contains build/install/log artifacts.
+归档.zip
+
+# Clean GitHub upload archive is tracked through Git LFS.
+!aimdk_github_upload.zip
