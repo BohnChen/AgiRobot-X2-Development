@@ -1,5 +1,7 @@
 # 灵犀 X2 机器人的模式体系解析
 
+![封面图](../pictures/lingxi_x2_motion_modes/cover.png)
+
 > **官方参考与资源**：
 > - 智元 AimDK 官方文档与资源包下载地址：[https://x2-aimdk.agibot.com/zh-cn/latest/index.html](https://x2-aimdk.agibot.com/zh-cn/latest/index.html)
 > - 适用 SDK 版本：`v1.0.0`
