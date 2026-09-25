@@ -10,8 +10,7 @@
 - [一、 前置技术原理：ROS 2 Service 与灵犀 X2 接口规范](#一-前置技术原理ros-2-service-与灵犀-x2-接口规范)
   - [1.1 为什么是 Service 而不是 Topic？](#11-为什么是-service-而不是-topic)
   - [1.2 灵犀 X2 模式服务定义](#12-灵犀-x2-模式服务定义)
-  - [1.3 通信保护：跨板通信与重试机制](#13-通信保护跨板通信与重试机制)
-  - [1.4 示范代码：模式切换客户端（C++ 与 Python）](#14-示范代码模式切换客户端c-与-python)
+  - [1.3 核心思想：模式切换的最小代码骨架](#13-核心思想模式切换的最小代码骨架)
 - [二、 灵犀 X2 模式体系架构与状态机全景](#二-灵犀-x2-模式体系架构与状态机全景)
 - [三、 五大核心基准模式图文深度拆解](#三-五大核心基准模式图文深度拆解)
   - [3.1 零力矩模式（PASSIVE_DEFAULT / PD）](#31-零力矩模式passive_default--pd)
@@ -65,126 +64,43 @@
 2. **查询模式服务**：`/aimdk_5Fmsgs/srv/GetMcAction`
    - 返回当前的 `McActionStatus`（如 `100: 运行中`，`200: 切换中`）及当前动作描述。
 
-### 1.3 通信保护：跨板通信与重试机制
+### 1.3 核心思想：模式切换的最小代码骨架
 
-灵犀 X2 采用分布式计算架构：
-- **PC1（10.0.1.40）**：运控实时计算单元，运行高频姿态解算与电机闭环；
-- **PC2（10.0.1.41）/ 外部工作站**：二开计算单元，运行用户逻辑。
+抛开外围的参数解析与终端交互，模式切换在底层逻辑上极为精炼：**创建 Client $\rightarrow$ 填充目标模式字符串 $\rightarrow$ 异步发送并处理跨板超时**。
 
-二开程序与运控节点跨越了不同的计算板卡与网络层。在工程实践中，由于下位机运控实时环路繁忙或网络抖动，ROS 2 原生 Service 偶发单次超时或未能及时响应。智元官方在例程中建立了一套**标准防护模式**：
-- 采用非阻塞调用 `async_send_request` 配合带超时的 `spin_until_future_complete`（单次等待 250ms）；
-- 每次等待未决时，动态刷新请求头时间戳 `header.stamp = now()`，循环重试最多 8 次；
-- 该设计避免了单次超时导致二开主流程永久阻塞，显著提高了状态切换的成功率。
-
----
-
-### 1.4 示范代码：模式切换客户端（C++ 与 Python）
-
-#### C++ 核心实现（侧重强类型与健壮性）
-
-以下节选自项目源码 `src/examples/src/mc/set_mc_action.cpp` 的核心实现结构：
-
+#### C++ 核心调用范式
 ```cpp
-#include "aimdk_msgs/srv/set_mc_action.hpp"
-#include "aimdk_msgs/msg/common_state.hpp"
-#include "rclcpp/rclcpp.hpp"
-#include <chrono>
-#include <memory>
+// 1. 构造模式切换请求
+auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
+request->source = "developer_node";           // 标明控制来源
+request->command.action_desc = "STAND_DEFAULT"; // 目标模式
 
-class SetMcActionClient : public rclcpp::Node {
-public:
-  SetMcActionClient() : Node("set_mc_action_client") {
-    // 1. 创建 Service 客户端
-    client_ = this->create_client<aimdk_msgs::srv::SetMcAction>(
-        "/aimdk_5Fmsgs/srv/SetMcAction");
-
-    // 2. 等待服务端上线
-    while (!client_->wait_for_service(std::chrono::seconds(2))) {
-      RCLCPP_INFO(this->get_logger(), "⏳ 等待模式切换服务上线中...");
+// 2. 发送请求（跨板通信建议带 250ms 超时与重试机制）
+request->header.stamp = node->now();
+auto future = client->async_send_request(request);
+if (rclcpp::spin_until_future_complete(node, future, 250ms) == rclcpp::FutureReturnCode::SUCCESS) {
+    if (future.get()->response.status.value == CommonState::SUCCESS) {
+        // 机器人成功进入目标模式
     }
-    RCLCPP_INFO(this->get_logger(), "🟢 模式切换服务就绪。");
-  }
-
-  bool send_request(const std::string &action_name) {
-    auto request = std::make_shared<aimdk_msgs::srv::SetMcAction::Request>();
-    request->source = "developer_node";
-    request->command.action_desc = action_name;
-
-    // 单次重试超时 250ms，最多重试 8 次
-    const std::chrono::milliseconds timeout(250);
-    for (int i = 0; i < 8; ++i) {
-      request->header.stamp = this->now();
-      auto future = client_->async_send_request(request);
-      
-      auto retcode = rclcpp::spin_until_future_complete(shared_from_this(), future, timeout);
-      if (retcode != rclcpp::FutureReturnCode::SUCCESS) {
-        RCLCPP_WARN(this->get_logger(), "响应超时，正在进行第 [%d] 次重试...", i + 1);
-        continue;
-      }
-
-      // 请求已成功接收并响应
-      auto response = future.get();
-      if (response->response.status.value == aimdk_msgs::msg::CommonState::SUCCESS) {
-        RCLCPP_INFO(this->get_logger(), "✅ 机器人成功切换至模式: %s", action_name.c_str());
-        return true;
-      } else {
-        RCLCPP_ERROR(this->get_logger(), "❌ 模式切换失败: %s", response->response.message.c_str());
-        return false;
-      }
-    }
-
-    RCLCPP_ERROR(this->get_logger(), "❌ 超过最大重试次数，服务调用超时。");
-    return false;
-  }
-
-private:
-  rclcpp::Client<aimdk_msgs::srv::SetMcAction>::SharedPtr client_;
-};
+}
 ```
 
-#### Python 并列实现（快速验证与调试）
-
-以下为 Python 对应实现（节选自 `src/py_examples/py_examples/set_mc_action.py`）：
-
+#### Python 并列对照
 ```python
-import rclpy
-from rclpy.node import Node
-from aimdk_msgs.srv import SetMcAction
-from aimdk_msgs.msg import RequestHeader, CommonState, McActionCommand
+# 构造请求并下发
+req = SetMcAction.Request()
+req.source = 'developer_py_node'
+req.command.action_desc = 'STAND_DEFAULT'
+req.header.stamp = node.get_clock().now().to_msg()
 
-class SetMcActionClient(Node):
-    def __init__(self):
-        super().__init__('set_mc_action_client')
-        self.client = self.create_client(SetMcAction, '/aimdk_5Fmsgs/srv/SetMcAction')
-        while not self.client.wait_for_service(timeout_sec=2.0):
-            self.get_logger().info('⏳ 等待服务上线...')
-        self.get_logger().info('🟢 服务已连接。')
-
-    def send_request(self, action_name: str):
-        req = SetMcAction.Request()
-        req.header = RequestHeader()
-        req.source = 'developer_py_node'
-        
-        cmd = McActionCommand()
-        cmd.action_desc = action_name
-        req.command = cmd
-
-        for i in range(8):
-            req.header.stamp = self.get_clock().now().to_msg()
-            future = self.client.call_async(req)
-            rclpy.spin_until_future_complete(self, future, timeout_sec=0.25)
-            if future.done():
-                break
-            self.get_logger().info(f'重试中 ... [{i+1}]')
-
-        response = future.result()
-        if response and response.response.status.value == CommonState.SUCCESS:
-            self.get_logger().info(f'✅ 成功进入模式: {action_name}')
-            return True
-        else:
-            self.get_logger().error('❌ 模式切换失败或调用超时。')
-            return False
+future = client.call_async(req)
+rclpy.spin_until_future_complete(node, future, timeout_sec=0.25)
+if future.done() and future.result().response.status.value == CommonState.SUCCESS:
+    # 切换成功
 ```
+
+> **设计思想提炼**：  
+> 开发者无需直接面对底层电机的逆动力学解算，只需通过 Service 向运控状态机下发合法的“意图（Intention）”。运控节点完成安全性前置校验后，自动在底层规划插值与力矩平滑过渡。
 
 ---
 
