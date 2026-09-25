@@ -3,6 +3,7 @@
 > **官方参考与资源**：
 > - 智元 AimDK 官方文档与资源包下载地址：[https://x2-aimdk.agibot.com/zh-cn/latest/index.html](https://x2-aimdk.agibot.com/zh-cn/latest/index.html)
 > - 适用 SDK 版本：`v1.0.0`
+> - **图片版权与来源声明**：本文涉及的所有机器人物理姿态与操作示意图片，均提取自智元官方 SDK v1.0.0 资源包。
 
 ---
 
