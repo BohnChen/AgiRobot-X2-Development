@@ -1,6 +1,6 @@
 # 使用 Mac 的Parallels Ubuntu 虚拟机直连灵犀 X2 实操指导手册（双网卡图文版）
 
-![封面](./pictures/lingxi_x2_network_guide_cover.png)
+![封面](../pictures/lingxi_x2_network_guide_cover.png)
 
 本文档指导如何在运行于 Mac（Apple Silicon 或 Intel）的 Parallels Desktop 虚拟机中的 Ubuntu 系统，通过双网卡配置实现：**网卡 1 负责虚拟机正常访问互联网，网卡 2 桥接直连灵犀 X2 机器人的调试网线接口**，完成从插拔网线到稳定 `ping` 通的完整配置。
 
@@ -22,7 +22,7 @@
 2. 将 **RJ45 网线** 一头插入电脑上的外接网卡，另一头插入 **灵犀 X2 机身上的调试网线接口**。
 3. 启动灵犀。
 
-![link](./pictures/LinktoX2.png)
+![link](../pictures/LinktoX2.png)
 
 ```
 +------------------+         RJ45 网线         +-----------------------------+
@@ -73,7 +73,7 @@
 > ⚠️ **致命避坑提示**：
 > 「网络 2」**绝不能**再选择“共享网络”！若选了共享网络，虚拟机将处于独立内部 NAT 子网中，无法将二层 ARP/ICMP 数据帧发送到物理网线中，会导致彻底 Ping 不通。
 
-![paraSetting](./pictures/paraSetting.png)
+![paraSetting](../pictures/paraSetting.png)
 
 ---
 
@@ -142,7 +142,7 @@ enp0s6           DOWN/UP        (无 IP 地址)             # 网卡 2：桥接�
    sudo netplan apply
    ```
 
-![01-netcfg](./pictures/01-netcfg.png)
+![01-netcfg](../pictures/01-netcfg.png)
 
 ---
 
@@ -162,7 +162,7 @@ ip addr show enp0s6
 ```
 确认包含 `inet 10.0.1.2/24` 且状态为 `state UP`。
 
-![inet_status](./pictures/inet_status.png)
+![inet_status](../pictures/inet_status.png)
 
 ---
 
